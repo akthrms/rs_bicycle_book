@@ -131,8 +131,8 @@ fn recognize_many(input: &[u8], mut position: usize, mut f: impl FnMut(u8) -> bo
 fn lex_number(input: &[u8], position: usize) -> Result<(Token, usize), LexError> {
     let start = position;
     let end = recognize_many(input, start, |b| b"1234567890".contains(&b));
-    let number = from_utf8(&input[start..end]).unwrap().parse().unwrap();
-    Ok((Token::number(number, Location(start, end)), end))
+    let n = from_utf8(&input[start..end]).unwrap().parse().unwrap();
+    Ok((Token::number(n, Location(start, end)), end))
 }
 
 fn skip_spaces(input: &[u8], position: usize) -> Result<((), usize), LexError> {
@@ -193,6 +193,105 @@ fn test_lexer() {
             Token::number(10, Location(13, 15)),
         ])
     )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum AstKind {
+    Num(u64),
+    UniOp {
+        op: UniOp,
+        element: Box<Ast>,
+    },
+    BinOp {
+        op: BinOp,
+        left: Box<Ast>,
+        right: Box<Ast>,
+    },
+}
+
+type Ast = Annotation<AstKind>;
+
+impl Ast {
+    fn num(n: u64, location: Location) -> Self {
+        Self::new(AstKind::Num(n), location)
+    }
+
+    fn uni_op(op: UniOp, element: Ast, location: Location) -> Self {
+        Self::new(
+            AstKind::UniOp {
+                op,
+                element: Box::new(element),
+            },
+            location,
+        )
+    }
+
+    fn bin_op(op: BinOp, left: Ast, right: Ast, location: Location) -> Self {
+        Self::new(
+            AstKind::BinOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+            location,
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum UniOpKind {
+    Plus,
+    Minus,
+}
+
+type UniOp = Annotation<UniOpKind>;
+
+impl UniOp {
+    fn plus(location: Location) -> Self {
+        Self::new(UniOpKind::Plus, location)
+    }
+
+    fn minus(location: Location) -> Self {
+        Self::new(UniOpKind::Minus, location)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum BinOpKind {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+type BinOp = Annotation<BinOpKind>;
+
+impl BinOp {
+    fn add(location: Location) -> Self {
+        Self::new(BinOpKind::Add, location)
+    }
+
+    fn sub(location: Location) -> Self {
+        Self::new(BinOpKind::Sub, location)
+    }
+
+    fn mul(location: Location) -> Self {
+        Self::new(BinOpKind::Mul, location)
+    }
+
+    fn div(location: Location) -> Self {
+        Self::new(BinOpKind::Div, location)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum ParseError {
+    UnexpectedToken(Token),
+    NotExpression(Token),
+    NotOperator(Token),
+    UnclosedOpenParen(Token),
+    RedundantExpression(Token),
+    Eof,
 }
 
 fn prompt(s: &str) -> io::Result<()> {
