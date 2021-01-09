@@ -199,11 +199,11 @@ fn test_lexer() {
 enum AstKind {
     Num(u64),
     UniOp {
-        op: UniOp,
+        uni_op: UniOp,
         element: Box<Ast>,
     },
     BinOp {
-        op: BinOp,
+        bin_op: BinOp,
         left: Box<Ast>,
         right: Box<Ast>,
     },
@@ -216,20 +216,20 @@ impl Ast {
         Self::new(AstKind::Num(n), location)
     }
 
-    fn uni_op(op: UniOp, element: Ast, location: Location) -> Self {
+    fn uni_op(uni_op: UniOp, element: Ast, location: Location) -> Self {
         Self::new(
             AstKind::UniOp {
-                op,
+                uni_op,
                 element: Box::new(element),
             },
             location,
         )
     }
 
-    fn bin_op(op: BinOp, left: Ast, right: Ast, location: Location) -> Self {
+    fn bin_op(bin_op: BinOp, left: Ast, right: Ast, location: Location) -> Self {
         Self::new(
             AstKind::BinOp {
-                op,
+                bin_op,
                 left: Box::new(left),
                 right: Box::new(right),
             },
