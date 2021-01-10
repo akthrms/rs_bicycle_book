@@ -408,7 +408,7 @@ where
         .next()
         .ok_or(ParseError::Eof)
         .and_then(|token| match token.value {
-            TokenKind::Number(n) => Ok(Ast::new(AstKind::Num(n), token.location)),
+            TokenKind::Number(n) => Ok(Ast::num(n, token.location)),
             TokenKind::LParen => {
                 let expr = parse_expr(tokens)?;
                 match tokens.next() {
@@ -453,7 +453,7 @@ fn test_parser() {
                 BinOp::add(Location(2, 3)),
                 Ast::num(1, Location(0, 1)),
                 Ast::bin_op(
-                    BinOp::new(BinOpKind::Mul, Location(6, 7)),
+                    BinOp::mul(Location(6, 7)),
                     Ast::num(2, Location(4, 5)),
                     Ast::num(3, Location(8, 9)),
                     Location(4, 9)
