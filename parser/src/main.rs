@@ -703,6 +703,60 @@ impl StdError for InterpreterError {
     }
 }
 
+struct RpnCompiler;
+
+impl RpnCompiler {
+    pub fn new() -> Self {
+        RpnCompiler
+    }
+
+    pub fn compile(&mut self, expr: &Ast) -> String {
+        let mut buffer = String::new();
+        self.compile_inner(expr, &mut buffer);
+        buffer
+    }
+
+    pub fn compile_inner(&mut self, expr: &Ast, buffer: &mut String) {
+        match expr.value {
+            AstKind::Num(n) => buffer.push_str(&n.to_string()),
+            AstKind::UniOp {
+                ref uni_op,
+                ref element,
+            } => {
+                self.compile_uni_op(uni_op, buffer);
+                self.compile_inner(element, buffer);
+            }
+            AstKind::BinOp {
+                ref bin_op,
+                ref left,
+                ref right,
+            } => {
+                self.compile_inner(left, buffer);
+                buffer.push_str(" ");
+                self.compile_inner(right, buffer);
+                buffer.push_str(" ");
+                self.compile_bin_op(bin_op, buffer);
+            }
+        }
+    }
+
+    fn compile_uni_op(&mut self, uni_op: &UniOp, buffer: &mut String) {
+        match uni_op.value {
+            UniOpKind::Plus => buffer.push_str("+"),
+            UniOpKind::Minus => buffer.push_str("-"),
+        }
+    }
+
+    fn compile_bin_op(&mut self, bin_op: &BinOp, buffer: &mut String) {
+        match bin_op.value {
+            BinOpKind::Add => buffer.push_str("+"),
+            BinOpKind::Sub => buffer.push_str("-"),
+            BinOpKind::Mul => buffer.push_str("*"),
+            BinOpKind::Div => buffer.push_str("/"),
+        }
+    }
+}
+
 fn prompt(s: &str) -> io::Result<()> {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
@@ -711,6 +765,7 @@ fn prompt(s: &str) -> io::Result<()> {
 }
 
 fn main() {
+    let mut compiler = RpnCompiler::new();
     let mut interpreter = Interpreter::new();
 
     let stdin = io::stdin();
@@ -729,6 +784,14 @@ fn main() {
                     continue;
                 }
             };
+
+            println!("-----");
+
+            let rpn = compiler.compile(&ast);
+            println!("{}", rpn);
+
+            println!("-----");
+
             let n = match interpreter.evaluate(&ast) {
                 Ok(n) => n,
                 Err(e) => {
