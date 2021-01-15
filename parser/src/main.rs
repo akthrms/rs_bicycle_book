@@ -1,7 +1,10 @@
 use std::cmp::{max, min};
+use std::error::Error as StdError;
+use std::fmt;
 use std::io::{self, BufRead, BufReader, Write};
 use std::iter::Peekable;
 use std::str::from_utf8;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Location(usize, usize);
@@ -287,7 +290,6 @@ impl BinOp {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum ParseError {
-    UnexpectedToken(Token),
     NotExpression(Token),
     NotOperator(Token),
     UnclosedOpenParen(Token),
@@ -469,6 +471,146 @@ fn test_parser() {
         ))
     )
 }
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Error {
+    Lexer(LexError),
+    Parser(ParseError),
+}
+
+impl From<LexError> for Error {
+    fn from(e: LexError) -> Self {
+        Error::Lexer(e)
+    }
+}
+
+impl From<ParseError> for Error {
+    fn from(e: ParseError) -> Self {
+        Error::Parser(e)
+    }
+}
+
+impl FromStr for Ast {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let tokens = lex(s)?;
+        let ast = parse(tokens)?;
+        Ok(ast)
+    }
+}
+
+impl fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TokenKind::Number(n) => n.fmt(f),
+            TokenKind::Plus => write!(f, "+"),
+            TokenKind::Minus => write!(f, "-"),
+            TokenKind::Asterisk => write!(f, "*"),
+            TokenKind::Slash => write!(f, "/"),
+            TokenKind::LParen => write!(f, "("),
+            TokenKind::RParen => write!(f, ")"),
+        }
+    }
+}
+
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}-{}", self.0, self.1)
+    }
+}
+
+impl fmt::Display for LexError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let location = &self.location;
+        match &self.value {
+            LexErrorKind::InvalidChar(c) => write!(f, "{}: invalid char '{}'", location, c),
+            LexErrorKind::Eof => write!(f, "end of file"),
+        }
+    }
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParseError::NotExpression(token) => write!(
+                f,
+                "{}: {} is not a start of expression",
+                token.location, token.value
+            ),
+            ParseError::NotOperator(token) => {
+                write!(f, "{}: {} is not an operator", token.location, token.value)
+            }
+            ParseError::UnclosedOpenParen(token) => {
+                write!(f, "{}: {} is not closed", token.location, token.value)
+            }
+            ParseError::RedundantExpression(token) => write!(
+                f,
+                "{}: expression after {} is redundant",
+                token.location, token.value
+            ),
+            ParseError::Eof => write!(f, "End of file"),
+        }
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "parser error")
+    }
+}
+
+impl StdError for LexError {}
+
+impl StdError for ParseError {}
+
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            Error::Lexer(e) => Some(e),
+            Error::Parser(e) => Some(e),
+        }
+    }
+}
+
+fn print_annotation(input: &str, location: Location) {
+    eprintln!("{}", input);
+    eprintln!(
+        "{}{}",
+        " ".repeat(location.0),
+        "^".repeat(location.1 - location.0)
+    );
+}
+
+impl Error {
+    fn show_diagnostic(&self, input: &str) {
+        let (e, location): (&dyn StdError, Location) = match self {
+            Error::Lexer(e) => (e, e.location.clone()),
+            Error::Parser(e) => {
+                let location = match e {
+                    ParseError::NotExpression(Token { location, .. })
+                    | ParseError::NotOperator(Token { location, .. })
+                    | ParseError::UnclosedOpenParen(Token { location, .. }) => location.clone(),
+                    ParseError::RedundantExpression(Token { location, .. }) => {
+                        Location(location.0, input.len())
+                    }
+                    ParseError::Eof => Location(input.len(), input.len() + 1),
+                };
+                (e, location)
+            }
+        };
+        eprintln!("{}", e);
+        print_annotation(input, location);
+    }
+}
+
+fn show_trace<E: StdError>(e: E) {
+    eprintln!("{}", e);
+    let mut source = e.source();
+    while let Some(e) = source {
+        eprintln!("caused by {}", e);
+        source = e.source();
+    }
+}
 
 fn prompt(s: &str) -> io::Result<()> {
     let stdout = io::stdout();
@@ -486,8 +628,14 @@ fn main() {
     loop {
         prompt("> ").unwrap();
         if let Some(Ok(line)) = lines.next() {
-            let tokens = lex(&line).unwrap();
-            let ast = parse(tokens).unwrap();
+            let ast = match line.parse::<Ast>() {
+                Ok(ast) => ast,
+                Err(e) => {
+                    e.show_diagnostic(&line);
+                    show_trace(e);
+                    continue;
+                }
+            };
             println!("{:?}", ast);
         } else {
             break;
