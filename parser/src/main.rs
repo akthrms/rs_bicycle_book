@@ -471,6 +471,7 @@ fn test_parser() {
         ))
     )
 }
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Error {
     Lexer(LexError),
@@ -612,6 +613,96 @@ fn show_trace<E: StdError>(e: E) {
     }
 }
 
+struct Interpreter;
+
+impl Interpreter {
+    pub fn new() -> Self {
+        Interpreter
+    }
+
+    pub fn evaluate(&mut self, expr: &Ast) -> Result<i64, InterpreterError> {
+        match expr.value {
+            AstKind::Num(n) => Ok(n as i64),
+            AstKind::UniOp {
+                ref uni_op,
+                ref element,
+            } => {
+                let element = self.evaluate(element)?;
+                Ok(self.evaluate_uni_op(uni_op, element))
+            }
+            AstKind::BinOp {
+                ref bin_op,
+                ref left,
+                ref right,
+            } => {
+                let left = self.evaluate(left)?;
+                let right = self.evaluate(right)?;
+                self.evaluate_bin_op(bin_op, left, right)
+                    .map_err(|e| InterpreterError::new(e, expr.location.clone()))
+            }
+        }
+    }
+
+    fn evaluate_uni_op(&mut self, uni_op: &UniOp, n: i64) -> i64 {
+        match uni_op.value {
+            UniOpKind::Plus => n,
+            UniOpKind::Minus => -n,
+        }
+    }
+
+    fn evaluate_bin_op(
+        &mut self,
+        bin_op: &BinOp,
+        left: i64,
+        right: i64,
+    ) -> Result<i64, InterpreterErrorKind> {
+        match bin_op.value {
+            BinOpKind::Add => Ok(left + right),
+            BinOpKind::Sub => Ok(left - right),
+            BinOpKind::Mul => Ok(left * right),
+            BinOpKind::Div => {
+                if right == 0 {
+                    Err(InterpreterErrorKind::DivisionByZero)
+                } else {
+                    Ok(left / right)
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum InterpreterErrorKind {
+    DivisionByZero,
+}
+
+type InterpreterError = Annotation<InterpreterErrorKind>;
+
+impl InterpreterError {
+    fn show_diagnostic(&self, input: &str) {
+        eprintln!("{}", self);
+        print_annotation(input, self.location.clone());
+    }
+}
+
+impl fmt::Display for InterpreterError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.value {
+            InterpreterErrorKind::DivisionByZero => write!(f, "division by zero"),
+        }
+    }
+}
+
+impl StdError for InterpreterError {
+    fn description(&self) -> &str {
+        match self.value {
+            InterpreterErrorKind::DivisionByZero => {
+                "the right hand expression of the division evaluates to zero"
+            }
+        }
+    }
+}
+
 fn prompt(s: &str) -> io::Result<()> {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
@@ -620,6 +711,8 @@ fn prompt(s: &str) -> io::Result<()> {
 }
 
 fn main() {
+    let mut interpreter = Interpreter::new();
+
     let stdin = io::stdin();
     let stdin = stdin.lock();
     let stdin = BufReader::new(stdin);
@@ -636,7 +729,15 @@ fn main() {
                     continue;
                 }
             };
-            println!("{:?}", ast);
+            let n = match interpreter.evaluate(&ast) {
+                Ok(n) => n,
+                Err(e) => {
+                    e.show_diagnostic(&line);
+                    show_trace(e);
+                    continue;
+                }
+            };
+            println!("{}", n);
         } else {
             break;
         }
