@@ -61,3 +61,26 @@ impl Default for CountOption {
         CountOption::Word
     }
 }
+
+#[test]
+fn word_count_works() {
+    use std::io::Cursor;
+
+    let mut exp = HashMap::new();
+    exp.insert("aa".to_string(), 1);
+    exp.insert("bb".to_string(), 2);
+    exp.insert("cc".to_string(), 1);
+
+    assert_eq!(count(Cursor::new("aa bb cc bb"), CountOption::Word), exp);
+}
+
+#[test]
+#[should_panic]
+fn word_count_do_not_unknown_words() {
+    use std::io::Cursor;
+
+    count(
+        Cursor::new([b'a', 0xf0, 0x90, 0x80, 0xe3, 0x81, 0x82]),
+        CountOption::Word,
+    );
+}
